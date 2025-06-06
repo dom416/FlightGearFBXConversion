@@ -35,7 +35,11 @@ Step 5: Import the planes into unreal: when importing, rotate 180 degrees about 
 
 Notes: 
 
-The baseline script will merge most of the parts into a single mesh and the powershell script specifies some parts like the flight gear to be excluded and added into unreal as seperate parts. The script is not perfect and the extra assets like effects are not in their correct place by default since fligt gear uses a unique xml structure to deal with this. The powershell commands  I do this because my planes will mostly just be flying in my use case but you can change the script and powershell commands as needed. Also many of the optional assets like afterburner, lights, shock cones, etc. may be hidden from unreal by the script so you may have to change that as well. 
+The powershell script uses the default livery (color scheme) for each plane. you can specify this in the powershell command if you want to change it or you can easily change it by simply dragging the .png livery into the unreal content browser, then drag it onto the main body as a texture.
+
+The baseline script will merge most of the parts into a single mesh and the powershell script specifies some parts like the flight gear to be excluded and added into unreal as seperate parts. I do this because my planes will mostly just be flying in my use case but you can change the script and powershell commands as needed. Also many of the optional assets like afterburner, lights, shock cones, etc. may be hidden from unreal by the script so you may have to change that as well. 
+
+The script is not perfect and the extra assets like effects are not in their correct place by default since fligt gear uses a unique xml structure to deal with this. you can manually correct these in unreal or modify the script.
 
 FlightGear uses the GNU General Public License, version 2, which is a copyleft license. So if you use these assets and want to distribute your program then they need to be freely available and fall under this license or a more permissive one and the license needs to be included with your project. Also if you make modified derivative assets (possibly including your entire game itself) based on these assets then those assets or your game also fall under this license.
 
