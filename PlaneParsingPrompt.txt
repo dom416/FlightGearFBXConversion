@@ -1,0 +1,214 @@
+Master Prompt for Aircraft Processing Pipeline
+Hello Gemini,
+
+Your task is to act as the orchestrator for a large-scale 3D asset processing pipeline. I will provide you with chunks of a file tree from my C:\Users\domin\Documents\FlightGearData directory. For each aircraft you identify in the file tree, you will perform a series of actions: data enrichment, folder creation, and command generation using the provided Python script.
+
+Objective
+For each distinct aircraft model found in the provided file tree, your goal is to:
+
+Create a dedicated output folder.
+Research and save a metadata file with key performance and type identifiers for the aircraft.
+Generate a series of PowerShell commands to process the aircraft's 3D model and generate a separate, textured FBX file for it with its default livery.
+Your Task Breakdown
+You will analyze the file tree I provide. When you identify a top-level aircraft folder (e.g., ...\FlightGearData\F-35B, ...\FlightGearData\Cessna-195, etc.), you must perform the following steps for that aircraft:
+
+1. Create Output Folder:
+
+The base output directory is C:\Users\domin\Documents\TruthTracks\Planes\.
+For each aircraft, create a unique subfolder named after the aircraft model.
+Example: For the F-35B, you will conceptually create the folder C:\Users\domin\Documents\TruthTracks\Planes\F-35B\.
+2. Research and Generate Metadata File:
+
+For each aircraft, you must use your knowledge and search capabilities to determine the following data points.
+Create a JSON file named metadata.json inside the aircraft's new output folder (e.g., ...\Planes\F-35B\metadata.json).
+you must create a powershell command to make the .json in the correct directory since you cannot directly access my folders!
+
+The content of this JSON file must be:
+IsMilitary: 1 for military, 0 for civilian.
+IsInService: 1 if the aircraft is in active service today, 0 if it is historical/retired.
+IsHelicopter: 1 if it is a helicopter, 0 otherwise.
+IsFixedWing: 1 if it is a fixed-wing aircraft, 0 otherwise.
+CruisingAirspeed: An integer estimate of its typical cruise speed in knots.
+CruisingAltitude: An integer estimate of its typical cruise altitude in feet.
+MaxAirspeed: An integer estimate of its maximum speed in knots.
+Example metadata.json for the F-35B:
+JSON
+
+{
+  "IsMilitary": 1,
+  "IsInService": 1,
+  "IsHelicopter": 0,
+  "IsFixedWing": 1,
+  "CruisingAirspeed": 595,
+  "CruisingAltitude": 40000,
+  "MaxAirspeed": 1060
+}
+3. Generate PowerShell Commands:
+
+Identify Files:
+Main Model: Find the primary .ac file. It's usually in the Models/ subdirectory and shares the name of the parent folder (e.g., ...\Models\F-35B.ac).
+Core Parts: Identify all other .ac files in the same Models/ directory.
+Liveries: Identify all image files (.png, .jpg, .rgb, etc.) in any Liveries or Skins subfolders.
+Automatic Exclusions: From the list of "Core Parts", automatically identify files named Gear.ac, landing-gear.ac, or similar. Also, if you identify what is clearly another full aircraft model in this folder, add it to the exclusion list. These excluded files will be treated as separate, parented objects.
+Generate Commands:
+You will generate one PowerShell command for each .ac plane file
+Each command will call the Python script below.
+The output FBX for each command should be unique and named after the plane
+The command should exclude the identified gear/other full plane files from the main mesh. note that some planes have forward and rear landing gear that needs to be excluded.
+The command should not include the extra assets from sub-folders (i.e., do not add the --include_extra_assets flag).
+The Python Script (assemble_aircraft.py)
+Here is the complete Python script that your generated commands will call. Place this script at C:\Users\domin\Documents\Python Scripts\assemble_aircraft.py.
+
+Python
+
+# assemble_aircraft.py
+import bpy
+import os
+import glob
+import math
+import datetime
+import traceback
+import sys
+import argparse
+
+def log(msg):
+    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+def parse_args():
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--main_model", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--livery", default=None)
+    parser.add_argument("--include_extra_assets", action='store_true')
+    parser.add_argument("--exclude", nargs='+', default=[])
+    return parser.parse_args(argv)
+
+def clean_scene():
+    log("Cleaning scene...")
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='OBJECT')
+    if bpy.context.scene.objects:
+        bpy.ops.object.select_all(action='SELECT')
+        bpy.ops.object.delete()
+    for data_block_type in (bpy.data.materials, bpy.data.images, bpy.data.meshes):
+        for item in list(data_block_type):
+            try:
+                data_block_type.remove(item)
+            except: pass
+    log("Scene cleaned.")
+
+def import_and_join(ac_paths_list, object_name):
+    if not ac_paths_list: return None
+    all_imported_parts = []
+    for ac_path in ac_paths_list:
+        if not os.path.exists(ac_path):
+            log(f"  Path not found: {ac_path}")
+            continue
+        bpy.ops.object.select_all(action='DESELECT')
+        objects_before = set(bpy.context.scene.objects)
+        try:
+            bpy.ops.import_scene.import_ac3d(filepath=ac_path)
+            newly_imported = list(set(bpy.context.scene.objects) - objects_before)
+            all_imported_parts.extend(p for p in newly_imported if p.type == 'MESH')
+        except Exception as e:
+            log(f"  ERROR importing file '{ac_path}': {e}")
+    if not all_imported_parts: return None
+    bpy.ops.object.select_all(action='DESELECT')
+    for part in all_imported_parts:
+        part.select_set(True)
+    bpy.context.view_layer.objects.active = all_imported_parts[0]
+    if len(all_imported_parts) > 1:
+        bpy.ops.object.join()
+    joined_asset = bpy.context.active_object
+    joined_asset.name = object_name
+    return joined_asset
+
+def apply_livery(obj, livery_path):
+    if not obj or not livery_path or not os.path.exists(livery_path): return
+    log(f"Applying livery '{os.path.basename(livery_path)}' to '{obj.name}'...")
+    try:
+        img = bpy.data.images.load(livery_path, check_existing=True)
+        if obj.material_slots:
+            for mat_slot in obj.material_slots:
+                if mat_slot.material:
+                    mat = mat_slot.material
+                    mat.use_nodes = True
+                    bsdf = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+                    if not bsdf:
+                        mat.node_tree.nodes.clear()
+                        bsdf = mat.node_tree.nodes.new('ShaderNodeBsdfPrincipled')
+                        output_node = mat.node_tree.nodes.new('ShaderNodeOutputMaterial')
+                        mat.node_tree.links.new(bsdf.outputs['BSDF'], output_node.inputs['Surface'])
+                    tex_node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                    tex_node.image = img
+                    if 'Base Color' in bsdf.inputs:
+                        mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+    except Exception as e:
+        log(f"Error during livery application: {e}")
+
+# --- Main Execution ---
+log("Starting Aircraft Assembly Script.")
+ARGS = parse_args()
+model_basename = os.path.splitext(os.path.basename(ARGS.main_model))[0]
+model_base_dir = os.path.dirname(ARGS.main_model)
+
+log(f"--- PROCESSING: {model_basename} ---")
+clean_scene()
+
+# Discover Assets
+all_ac_files_in_dir = set(glob.glob(os.path.join(model_base_dir, '**', '*.ac'), recursive=True) + glob.glob(os.path.join(model_base_dir, '**', '*.AC'), recursive=True))
+top_level_paths = {f for f in all_ac_files_in_dir if os.path.dirname(f) == model_base_dir}
+excluded_paths = {f for f in top_level_paths if os.path.basename(f) in ARGS.exclude}
+core_component_paths = top_level_paths - excluded_paths
+core_component_paths.add(ARGS.main_model)
+sub_folder_assets_paths = all_ac_files_in_dir - top_level_paths
+
+# Assemble Core Mesh
+core_aircraft_object = import_and_join(sorted(list(core_component_paths)), f"{model_basename}_Core")
+if not core_aircraft_object: raise SystemExit("FATAL: Failed to create core aircraft object.")
+
+# Apply Livery to Core Mesh
+if ARGS.livery: apply_livery(core_aircraft_object, ARGS.livery)
+
+# Create Root and Parent Core Mesh
+root_name = f"{model_basename}_Root"
+bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0))
+root_object = bpy.context.active_object
+root_object.name = root_name
+core_aircraft_object.parent = root_object
+
+# Process Excluded Assets as Separate Children
+for asset_path in sorted(list(excluded_paths)):
+    excluded_asset = import_and_join([asset_path], os.path.splitext(os.path.basename(asset_path))[0])
+    if excluded_asset:
+        original_matrix = excluded_asset.matrix_world.copy()
+        excluded_asset.parent = core_aircraft_object
+        excluded_asset.matrix_world = original_matrix
+
+# Process Sub-Folder Assets (conditionally)
+if ARGS.include_extra_assets:
+    for asset_path in sorted(list(sub_folder_assets_paths)):
+        extra_asset = import_and_join([asset_path], os.path.splitext(os.path.basename(asset_path))[0])
+        if extra_asset:
+            original_matrix = extra_asset.matrix_world.copy()
+            extra_asset.parent = core_aircraft_object
+            extra_asset.matrix_world = original_matrix
+
+# Export Final FBX
+log("Exporting final model...")
+bpy.ops.object.select_all(action='DESELECT')
+root_object.select_set(True) 
+bpy.context.view_layer.objects.active = root_object
+bpy.ops.object.select_grouped(type='CHILDREN_RECURSIVE')
+output_dir = os.path.dirname(ARGS.output)
+if output_dir and not os.path.exists(output_dir): os.makedirs(output_dir)
+bpy.ops.export_scene.fbx(filepath=ARGS.output, use_selection=True, apply_unit_scale=True, global_scale=1.0, bake_space_transform=True, object_types={'MESH', 'EMPTY'}, path_mode='COPY', embed_textures=True, mesh_smooth_type='FACE')
+log(f"--- EXPORT COMPLETE: {ARGS.output} ---")
+PowerShell Command Structure
+The commands you generate should follow this template. Note how a unique output path is generated for each livery.
+
+PowerShell
+
+# Command Example
+& "C:\Program Files\Blender Foundation\Blender 4.1\blender.exe" -b --python "C:\Users\domin\Documents\Python Scripts\assemble_aircraft.py" -- --main_model "C:\Path\To\Models\Plane.ac" --output "C:\Users\domin\Documents\TruthTracks\Planes\Plane\Plane_LiveryName1.fbx" --livery "C:\Path\To\Liveries\Livery1.png" --exclude "Gear.ac" "OtherPlane.ac"
