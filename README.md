@@ -1,4 +1,8 @@
 # FlightGearFBXConversion
+
+If you would like to download the basic .fbx assets for 400+ planes, you can find the 1 GB zip file here: https://drive.google.com/file/d/1cyi6qVt5pk2MB6OsyqmE9Dqo8rZwx2Wf/view?usp=sharing
+
+
 These scripts convert all the aircraft assets from flightgear .ac format into .fbx format for unreal engine
 
 
